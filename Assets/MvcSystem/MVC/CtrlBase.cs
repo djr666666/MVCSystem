@@ -22,34 +22,18 @@ namespace MVC
         { 
         
         }
+        /// <summary>
+        /// 手动触发依赖注入（在 Init 中调用）
+        /// </summary>
+        protected void Inject()
+        {
+            Ctrls.InjectTo(this);
+        }
     }
     public partial class Ctrls
     {
-        public static void Quit()
-        {
-            foreach (var item in CtrlCollector.GetAllCtrlInstances())
-                item.Quit();
-        }
-        public static void Init()
-        {
-            foreach (var item in CtrlCollector.GetAllCtrlInstances())
-                item.Init();
-        }
-
-        public static void OnLoginSuccess()
-        {
-            foreach (var item in CtrlCollector.GetAllCtrlInstances())
-                item.OnLoginSuccess();
-        }
+     
     }
-
-
-
-
-
-
-
-
 
 }
 

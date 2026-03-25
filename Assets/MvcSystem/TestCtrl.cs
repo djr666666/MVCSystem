@@ -2,8 +2,10 @@
 
 using MVC;
 
+[AutoCtrl]
 public class TestCtrl : CtrlBase
 {
+    [Inject] TestModel testModel;
     public override void Init()
     {
         base.Init();
@@ -24,19 +26,19 @@ public class TestCtrl : CtrlBase
 
     public void InitValue()
     {
-        Models.testModel.SetValue(66);
+        testModel.SetValue(66);
     }
 
     public void Add()
     {
-        int num = Models.testModel.GetValue();
-        Models.testModel.SetValue(num + 1);
+        int num = testModel.GetValue();
+        testModel.SetValue(num + 1);
         ev?.Invoke();
     }
     public void Sub()
     {
-        int num = Models.testModel.GetValue();
-        Models.testModel.SetValue(num - 1);
+        int num = testModel.GetValue();
+        testModel.SetValue(num - 1);
         ev?.Invoke();
     }
 

@@ -17,27 +17,19 @@ namespace MVC
         { 
         
         }
+
+        /// <summary>
+        /// 手动触发依赖注入（在 Init 中调用）
+        /// </summary>
+        protected void Inject()
+        {
+            Models.InjectTo(this);
+        }
     }
 
     public partial class Models
     {
-        public static void Init()
-        {
-
-            foreach (var item in ModelCollector.GetAllModelInstances())
-                item.Init();
-        }
-
-        public static void Quit()
-        {
-            foreach (var item in ModelCollector.GetAllModelInstances())
-                item.Quit();
-        }
-        public static void OnLoginSuccess()
-        {
-            foreach (ModelBase model in ModelCollector.GetAllModelInstances())
-                model.OnLoginSuccess();
-        }
+     
     }
 
 

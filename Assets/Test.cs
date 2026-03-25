@@ -12,19 +12,25 @@ public class Test : MonoBehaviour
     public Button add;
     public Text value;
 
+    [Inject] TestCtrl testCtrl;
+    [Inject] TestModel testModel;
+
     void Start()
     {
-        Ctrls.testCtrl.InitValue();
+        Ctrls.InjectTo(this);
+        Models.InjectTo(this);
+
+        testCtrl.InitValue();
 
         CtrlAddAndSubNum_ev();
         TestCtrl.ev += CtrlAddAndSubNum_ev;
-        sub.onClick.AddListener(Ctrls.testCtrl.Sub);
-        add.onClick.AddListener(Ctrls.testCtrl.Add);     
+        sub.onClick.AddListener(testCtrl.Sub);
+        add.onClick.AddListener(testCtrl.Add);     
     }
 
     private void CtrlAddAndSubNum_ev()
     {
-        value.text = Models.testModel.GetValue().ToString();
+        value.text = testModel.GetValue().ToString();
     }
 
  

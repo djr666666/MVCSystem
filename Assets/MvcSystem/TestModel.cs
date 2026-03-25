@@ -1,6 +1,9 @@
 ﻿using MVC;
 using UnityEngine;
 
+
+[AutoModel]
+
 public class TestModel : ModelBase
 {
     public int value = 100;
