@@ -295,3 +295,12 @@ Ctrl 和 Model 同名接口做的事一样，下面用 Model 说明。把 `Model
 | `C.Create<T>()` | 创建普通类并做上面两次注入。 |
 
 `Models.Init()`、`Models.Quit()` 由收集器在启动和退出时调用，界面里不要直接调。界面卸载单个功能只用 `Release`。
+
+## 主程和开发者注意
+
+<p style="color:#e10600;font-weight:bold;font-size:16px;line-height:1.7;">
+动态加载、动态卸载必须自己管好里头的注册。<br>
+写了 false 的 Model / Ctrl，监听在 Init() 里注册，在 Quit() 里反注册。Release 只会调用 Quit() 再从字典拿走，它不会替你卸监听。<br>
+Init 里注册了，Quit 里没卸：Release 之后旧对象还挂在收消息的地方，下次 Get 又注册一次，同一条消息进两次，旧对象也回收不掉。<br>
+没写 false 的由框架在启动时 Init、退出游戏时 Quit。写了 false 的这两头都要自己写成对。
+</p>
