@@ -189,7 +189,11 @@ public class Test : MonoBehaviour
 | `[AutoModel]`、`[AutoCtrl]` | 创建并 `Init`，一直留着 | 像 `Test` 那样直接 `InjectTo` |
 | `[AutoModel(false)]`、`[AutoCtrl(false)]` | 不创建 | `OnEnable` 里先 `Get` 再注入，`OnDisable` 里 `Release` |
 
-`Get` 第一次会创建、注入它自己的 `[Inject]`，并调用 `Init`。还没 `Release` 又打开，拿到的是原来那个，不会再 `Init`。`Release` 会调用 `Quit`，再从字典里拿走。对没写 `false` 的调用 `Release` 不会卸掉。
+没写 `false` 的，框架会替你做完生命周期：启动时调用 `Init`，退出游戏时调用 `Quit`。界面不要去 `Release` 它。
+
+写了 `false` 的要自己管。打开界面时 `Get`，框架才调用这个对象的 `Init`，服务器监听写在这里。关掉界面时调用 `Release`。`Release` 不是 `Quit`：它是卸字典的接口，里面会去调用你写的 `Quit()`，再把这个对象从字典拿走。反注册写在 `Quit()` 里。`Init` 注册了、`Quit` 没卸，`Release` 之后旧监听还在，下次 `Get` 又注册一个，同一条消息会进两次。
+
+`Get` 第一次会创建、注入它自己的 `[Inject]`，并调用 `Init`。还没 `Release` 又打开，拿到的是原来那个，不会再 `Init`。对没写 `false` 的调用 `Release` 不会卸掉。
 
 界面写法仍和 `Test` 一样用 `[Inject]`，只是多了打开时创建、关闭时释放。`Get` 要写在 `InjectTo` 前面，不然字段还是空的。
 
@@ -245,11 +249,49 @@ public class Pnl_MakeFood : MonoBehaviour
 
     void OnDisable()
     {
-        // 只卸做菜这一对。TestModel 这种没写 false 的仍留在内存里
+        // Release 不是 Quit。它会调用上面的 Quit()，再从字典拿走
+        // TestModel 这种没写 false 的，Release 不会卸
         Models.Release<MakeFoodModel>();
         Ctrls.Release<MakeFoodCtrl>();
     }
 }
 ```
 
-两个界面共用同一个写了 `false` 的 Model 时，等最后一个关掉再 `Release`。先关的那个如果释放了，另一个手里就是已经 `Quit` 过的对象。
+两个界面共用同一个写了 `false` 的 Model 时，等最后一个关掉再 `Release`。先关的那个如果释放了，另一个手里就是已经走过 `Quit()` 的对象。
+
+## 接口
+
+Ctrl 和 Model 同名接口做的事一样，下面用 Model 说明。把 `Models` 换成 `Ctrls`、`ModelBase` 换成 `CtrlBase` 即可。
+
+### 游戏入口
+
+| 接口 | 干什么 |
+| --- | --- |
+| `ModelCollector.Init()` | 游戏启动时调用。创建没写 `false` 的 Model，并调用它们的 `Init()`。写了 `false` 的只登记，不创建。 |
+| `CtrlCollector.Init()` | 同上，处理 Ctrl。 |
+| `ModelCollector.Quit()` | 游戏退出时调用。给当前还在字典里的 Model 调用 `Quit()`。 |
+| `CtrlCollector.Quit()` | 同上，处理 Ctrl。 |
+| `Models.OnLoginSuccess()` | 登录成功时调用。通知当前已经创建出来的 Model。写了 `false`、还没 `Get` 的收不到，等第一次 `Get` 时补一次。 |
+| `Ctrls.OnLoginSuccess()` | 同上，处理 Ctrl。 |
+
+### 单个对象上要重写的
+
+| 接口 | 干什么 |
+| --- | --- |
+| `Init()` | 准备数据和注册监听。没写 `false` 的，由启动时的 `ModelCollector.Init()` 调用。写了 `false` 的，由第一次 `Get` 调用。 |
+| `Quit()` | 反注册监听、清表和列表。这不是 `Release`。没写 `false` 的，退出游戏时由 `ModelCollector.Quit()` 调用。写了 `false` 的，由 `Release` 在移出字典之前调用。 |
+| `OnLoginSuccess()` | 登录成功后的处理。 |
+
+### 界面上要调用的
+
+| 接口 | 干什么 |
+| --- | --- |
+| `Models.Get<T>()` | 取 Model。字典里已有就直接返回，不会再 `Init`。写了 `false` 且字典里没有：创建、放进字典、注入、调用 `Init()`。 |
+| `Ctrls.Get<T>()` | 同上，处理 Ctrl。 |
+| `Models.Release<T>()` | 卸一个写了 `false` 的 Model。它不是 `Quit`。内部会调用该对象的 `Quit()`，再从字典移除。没写 `false` 的调用了也卸不掉。字典里本来没有则什么都不做。 |
+| `Ctrls.Release<T>()` | 同上，处理 Ctrl。 |
+| `Models.InjectTo(obj)` | 按 `[Inject]` 给 `obj` 填已经创建出来的 Model 或 Ctrl。写了 `false` 且还没 `Get` 的填不进去。 |
+| `Ctrls.InjectTo(obj)` | 同上。`MonoBehaviour` 两句都要写。 |
+| `C.Create<T>()` | 创建普通类并做上面两次注入。 |
+
+`Models.Init()`、`Models.Quit()` 由收集器在启动和退出时调用，界面里不要直接调。界面卸载单个功能只用 `Release`。
