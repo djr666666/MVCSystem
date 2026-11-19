@@ -7,18 +7,28 @@ namespace MVC
 {
     public partial class Models
     {
-        // 存储所有模型的字典（类型 -> 实例）
+        // 已经创建的模型（类型 -> 实例）。常驻的启动就在这里，按需的 Get 之后才进来。
         private static Dictionary<Type, ModelBase> _allModels = null;
+
+        // [AutoModel(false)]。启动只登记类型，不 new。
+        private static HashSet<Type> _lazyTypes = null;
+
+        // Models.Init 已经跑过。之后按需创建的模型要当场 Init。
+        private static bool _startupInitDone;
+
+        // OnLoginSuccess 已经广播过。之后按需创建的模型要补一次。
+        private static bool _loginBroadcast;
 
         // ==================== 自动注册 ====================
 
         /// <summary>
-        /// 自动收集所有带 [AutoModel] 标记的模型
+        /// 扫描 [AutoModel]。resident 为 true 的立刻创建；false 的只登记，等 Get。
         /// </summary>
         private static void AutoCollect()
         {
             if (_allModels != null) return;
             _allModels = new Dictionary<Type, ModelBase>();
+            _lazyTypes = new HashSet<Type>();
 
             // 获取当前项目中的所有类型
             Assembly assembly = Assembly.GetExecutingAssembly();
@@ -26,24 +36,26 @@ namespace MVC
 
             foreach (Type type in types)
             {
-                // 检查是否有 [AutoModel] 标记
-                if (type.GetCustomAttribute<AutoModelAttribute>() != null)
+                AutoModelAttribute attr = type.GetCustomAttribute<AutoModelAttribute>();
+                if (attr == null) continue;
+                if (!typeof(ModelBase).IsAssignableFrom(type) || type.IsAbstract) continue;
+
+                if (!attr.Resident)
                 {
-                    // 检查是否继承自 ModelBase
-                    if (typeof(ModelBase).IsAssignableFrom(type))
-                    {
-                        try
-                        {
-                            // 创建实例
-                            ModelBase instance = (ModelBase)Activator.CreateInstance(type);
-                            _allModels[type] = instance;
-                            Debug.Log($"[自动注册 Model] {type.Name}");
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogError($"创建 Model {type.Name} 失败: {e.Message}");
-                        }
-                    }
+                    _lazyTypes.Add(type);
+                    Debug.Log($"[按需登记 Model] {type.Name}");
+                    continue;
+                }
+
+                try
+                {
+                    ModelBase instance = (ModelBase)Activator.CreateInstance(type);
+                    _allModels[type] = instance;
+                    Debug.Log($"[自动注册 Model] {type.Name}");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"创建 Model {type.Name} 失败: {e.Message}");
                 }
             }
 
@@ -136,19 +148,85 @@ namespace MVC
         }
 
         /// <summary>
-        /// 获取指定类型的模型
+        /// 获取模型。已经在字典里就直接返回，不会再次 Init。
+        /// [AutoModel(false)] 第一次 Get 时才创建、注入，并在启动 Init 已完成后调用 Init。
         /// </summary>
         public static T Get<T>() where T : ModelBase
         {
             AutoCollect();
             Type type = typeof(T);
-            if (_allModels.TryGetValue(type, out ModelBase model))
+
+            if (_allModels.TryGetValue(type, out ModelBase found))
+                return (T)found;
+
+            if (!_lazyTypes.Contains(type))
             {
-                return model as T;
+                Debug.LogError($"找不到模型: {type.Name}。常驻用 [AutoModel]，按需用 [AutoModel(false)]");
+                return null;
             }
 
-            Debug.LogError($"找不到模型: {type.Name}");
-            return null;
+            try
+            {
+                T created = (T)CreateLazy(type);
+                Debug.Log($"[按需创建 Model] {type.Name}");
+                return created;
+            }
+            catch (Exception e)
+            {
+                Exception inner = e.InnerException ?? e;
+                Debug.LogError($"创建 Model {type.Name} 失败: {inner.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 创建单个按需模型。先放进字典，Init 里再 Get 自己时拿到的是这一个。
+        /// 启动 Init 还没跑完时不在这里 Init，交给 Init 的循环。
+        /// </summary>
+        private static ModelBase CreateLazy(Type type)
+        {
+            ModelBase created = (ModelBase)Activator.CreateInstance(type);
+            _allModels[type] = created;
+            try
+            {
+                InjectTo(created);
+                if (_startupInitDone)
+                {
+                    created.Init();
+                    if (_loginBroadcast)
+                        created.OnLoginSuccess();
+                }
+                return created;
+            }
+            catch
+            {
+                _allModels.Remove(type);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 卸掉按需模型：Quit，再从字典移除，之后可以被 GC。
+        /// 常驻模型（[AutoModel] / [AutoModel(true)]）忽略，继续留在内存里。
+        /// 还没 Release 又 Get，拿到的仍是原来那个。
+        /// </summary>
+        public static void Release<T>() where T : ModelBase
+        {
+            AutoCollect();
+            Type type = typeof(T);
+
+            if (!_lazyTypes.Contains(type))
+            {
+                Debug.LogWarning($"[释放忽略] {type.Name} 不是 [AutoModel(false)]，不会卸掉");
+                return;
+            }
+
+            if (!_allModels.TryGetValue(type, out ModelBase model))
+                return;
+
+            model.Quit();
+            _allModels.Remove(type);
+            Debug.Log($"[释放 Model] {type.Name}");
         }
 
         /// <summary>
@@ -161,16 +239,18 @@ namespace MVC
         }
 
         /// <summary>
-        /// 初始化所有模型
+        /// 初始化启动时已经创建的模型。标了 false 的不在这里 Init。
         /// </summary>
         public static void Init()
         {
             AutoCollect();
-            foreach (var item in _allModels.Values)
+            // 先置位，这样某个常驻 Init 里去 Get 按需模型时，那个模型会当场 Init，且不会被下面的循环再 Init 一次
+            _startupInitDone = true;
+            foreach (var item in new List<ModelBase>(_allModels.Values))
             {
                 item.Init();
             }
-            Debug.Log($"[Models] 初始化完成，共 {_allModels.Count} 个模型");
+            Debug.Log($"[Models] 初始化完成，常驻 {_allModels.Count} 个，按需 {_lazyTypes.Count} 个（未创建）");
         }
 
         /// <summary>
@@ -194,7 +274,8 @@ namespace MVC
         {
             if (_allModels == null) return;
 
-            foreach (var item in _allModels.Values)
+            _loginBroadcast = true;
+            foreach (var item in new List<ModelBase>(_allModels.Values))
             {
                 item.OnLoginSuccess();
             }

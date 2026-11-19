@@ -3,20 +3,36 @@
 namespace MVC
 {
     /// <summary>
-    /// 标记这个类需要自动注册到 Ctrls 中 [AutoCtrl]
+    /// 标记这个类由 Ctrls 管理。
+    /// [AutoCtrl] 或 [AutoCtrl(true)]：启动时创建并 Init，一直留在内存，Release 不会卸掉。
+    /// [AutoCtrl(false)]：启动不创建。第一次 Get 才创建并 Init，Release 时 Quit 并移出字典。
     /// </summary>
     [AttributeUsage(AttributeTargets.Class)]
     public class AutoCtrlAttribute : Attribute
     {
+        public bool Resident { get; }
+
+        public AutoCtrlAttribute(bool resident = true)
+        {
+            Resident = resident;
+        }
     }
 
 
     /// <summary>
-    /// 标记这个类需要自动注册到 Model 中 [AutoModel]
+    /// 标记这个类由 Models 管理。
+    /// [AutoModel] 或 [AutoModel(true)]：启动时创建并 Init，一直留在内存，Release 不会卸掉。
+    /// [AutoModel(false)]：启动不创建。第一次 Get 才创建并 Init，Release 时 Quit 并移出字典。
     /// </summary>
     [AttributeUsage(AttributeTargets.Class)]
     public class AutoModelAttribute : Attribute
     {
+        public bool Resident { get; }
+
+        public AutoModelAttribute(bool resident = true)
+        {
+            Resident = resident;
+        }
     }
 
 
