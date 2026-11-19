@@ -298,9 +298,14 @@ Ctrl 和 Model 同名接口做的事一样，下面用 Model 说明。把 `Model
 
 ## 主程和开发者注意
 
-<p style="color:#e10600;font-weight:bold;font-size:16px;line-height:1.7;">
-动态加载、动态卸载必须自己管好里头的注册。<br>
-写了 false 的 Model / Ctrl，监听在 Init() 里注册，在 Quit() 里反注册。Release 只会调用 Quit() 再从字典拿走，它不会替你卸监听。<br>
-Init 里注册了，Quit 里没卸：Release 之后旧对象还挂在收消息的地方，下次 Get 又注册一次，同一条消息进两次，旧对象也回收不掉。<br>
-没写 false 的由框架在启动时 Init、退出游戏时 Quit。写了 false 的这两头都要自己写成对。
-</p>
+<font color="red">
+
+**Init() 里注册之后，一定要在 Quit() 里反注册。调用 Release 才会帮你把监听卸掉。**
+
+动态加载、动态卸载必须自己管好里头的注册。写了 false 的 Model / Ctrl，监听写在 Init()，反注册写在 Quit()。Release 会调用 Quit()，再从字典拿走这个对象。Quit() 里写了反注册，监听才会被卸掉。
+
+Init 里注册了，Quit 里没写反注册：Release 之后旧对象还挂在收消息的地方。下次 Get 又注册一次，同一条消息进两次，旧对象也回收不掉。
+
+没写 false 的，框架在启动时 Init、退出游戏时 Quit。写了 false 的，这两头都要自己写成对。
+
+</font>
